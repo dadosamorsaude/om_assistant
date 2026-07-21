@@ -8,14 +8,33 @@ except Exception:
     pass
 
 import os
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Security, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security.api_key import APIKeyHeader
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
 
+import config
 from om_client import build_mcp_client, load_readonly_tools
 from deep_agent import build_agent
 from main import _final_text
+
+# --- Autenticação via API Key ---
+API_KEY_NAME = "X-API-Key"
+api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=True)
+
+async def verify_api_key(api_key: str = Security(api_key_header)):
+    if not config.API_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="API Key do servidor não configurada nas variáveis de ambiente (API_KEY)."
+        )
+    if api_key != config.API_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Credencial inválida."
+        )
+    return api_key
 
 # Carregar agente globalmente para reuso entre chamadas
 agent_executor = None
@@ -51,7 +70,7 @@ app.add_middleware(
 class ChatRequest(BaseModel):
     message: str
 
-@app.post("/api/chat")
+@app.post("/api/chat", dependencies=[Depends(verify_api_key)])
 async def chat(request: ChatRequest):
     global agent_executor
     if not agent_executor:

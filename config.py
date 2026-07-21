@@ -24,6 +24,9 @@ OPENMETADATA_CLIENT_SECRET = os.getenv("OPENMETADATA_CLIENT_SECRET")
 OPENMETADATA_TOKEN_URL = os.getenv("OPENMETADATA_TOKEN_URL")
 OPENMETADATA_AUTH_PROVIDER = os.getenv("OPENMETADATA_AUTH_PROVIDER", "openmetadata")
 
+# --- Security / API Authentication ---
+API_KEY = os.getenv("API_KEY")
+
 
 def model_id() -> str:
     """String de modelo no formato provider:model exigido pelo LangChain/deepagents."""
