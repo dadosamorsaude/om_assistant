@@ -109,17 +109,49 @@ async def main_async():
     agent = build_agent(tools)
 
     async def answer(history):
-        result = await agent.ainvoke({"messages": history})
-        return _final_text(result), result["messages"]
+        collected_messages = []
+        async for event in agent.astream_events({"messages": history}, version="v2"):
+            kind = event.get("event")
+            name = event.get("name")
+            
+            if kind == "on_chat_model_stream":
+                chunk = event["data"]["chunk"]
+                if chunk.content:
+                    text = ""
+                    if isinstance(chunk.content, str):
+                        text = chunk.content
+                    elif isinstance(chunk.content, list):
+                        for block in chunk.content:
+                            if isinstance(block, dict) and block.get("type") == "text":
+                                text += block.get("text", "")
+                            elif isinstance(block, str):
+                                text += block
+                    if text:
+                        print(text, end="", flush=True)
+                        
+            elif kind == "on_tool_start":
+                if name == "task":
+                    subagent = event["data"].get("input", {}).get("subagent_type", "especialista")
+                    desc = event["data"].get("input", {}).get("description", "")
+                    print(f"\n\n🤖 [Sub-agente: {subagent}] {desc}...", flush=True)
+                elif name == "responder_usuario":
+                    print("\n\n🤖 [Supervisor] Formatando resposta final...\n", flush=True)
+                    
+            elif kind == "on_chain_end" and name == "supervisor":
+                output = event["data"].get("output")
+                if isinstance(output, dict) and "messages" in output:
+                    collected_messages = output["messages"]
+                    
+        final_text = _final_text({"messages": collected_messages})
+        return final_text, collected_messages
 
     # Execução única
     if args.query:
         query = args.query.strip()
         print(f"Processando consulta: '{query}'...\n")
-        text, _ = await answer([{"role": "user", "content": query}])
-        print("\n=== RESPOSTA FINAL DO SUPERVISOR ===")
-        print(text)
-        print("=====================================")
+        print("=" * 60)
+        await answer([{"role": "user", "content": query}])
+        print("\n" + "=" * 60)
         return
 
     # Loop interativo (mantém histórico entre turnos)
@@ -137,12 +169,9 @@ async def main_async():
                 break
 
             history.append({"role": "user", "content": user_input})
+            print("\n" + "=" * 60)
             text, history = await answer(history)
-            print("\n" + "=" * 50)
-            print("RESPOSTA DO AGENTE")
-            print("=" * 50)
-            print(text)
-            print("=" * 50 + "\n")
+            print("\n" + "=" * 60 + "\n")
         except (KeyboardInterrupt, EOFError):
             print("\nEncerrando...")
             break

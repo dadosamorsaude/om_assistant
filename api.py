@@ -8,7 +8,9 @@ except Exception:
     pass
 
 import os
+import json
 from fastapi import FastAPI, HTTPException, Security, Depends, status
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security.api_key import APIKeyHeader
 from pydantic import BaseModel
@@ -70,67 +72,59 @@ app.add_middleware(
 class ChatRequest(BaseModel):
     message: str
 
-@app.post("/api/chat", dependencies=[Depends(verify_api_key)])
-async def chat(request: ChatRequest):
+async def stream_generator(message: str):
     global agent_executor
     if not agent_executor:
-        raise HTTPException(
-            status_code=500, 
-            detail="O agente não pôde ser inicializado. Verifique os logs do servidor."
-        )
-    
+        yield f"data: {json.dumps({'type': 'error', 'content': 'Agente não inicializado no servidor.'}, ensure_ascii=False)}\n\n"
+        return
+        
     try:
-        # Roda o agente com o input do usuário
-        result = await agent_executor.ainvoke({"messages": [{"role": "user", "content": request.message}]})
-        
-        # Procura se o supervisor chamou a ferramenta responder_usuario (de trás para frente)
-        structured_response = None
-        for msg in reversed(result["messages"]):
-            is_user = False
-            if isinstance(msg, dict):
-                is_user = msg.get("role") == "user"
-            else:
-                is_user = getattr(msg, "role", None) == "user" or getattr(msg, "type", None) == "human" or msg.__class__.__name__ == "HumanMessage"
+        async for event in agent_executor.astream_events({"messages": [{"role": "user", "content": message}]}, version="v2"):
+            kind = event.get("event")
+            name = event.get("name")
             
-            if is_user:
-                break
-                
-            if hasattr(msg, "tool_calls") and msg.tool_calls:
-                for call in msg.tool_calls:
-                    if call["name"] == "responder_usuario":
-                        structured_response = call["args"]
-                        break
-            if structured_response:
-                break
-        
-        if structured_response:
-            return {
-                "intent": structured_response.get("intencao", "general"),
-                "summary": structured_response.get("resumo", ""),
-                "detailed_markdown": structured_response.get("resposta_markdown", ""),
-                "metadata": {
-                    "entities": structured_response.get("ativos_citados", []),
-                    "columns": structured_response.get("colunas", []),
-                    "lineage": structured_response.get("linhagem", {}),
-                    "quality_tests": structured_response.get("testes_qualidade", [])
-                }
-            }
-        
-        # Fallback caso seja conversa geral ou texto plano
-        response_text = _final_text(result)
-        return {
-            "intent": "general",
-            "summary": response_text[:100] + "..." if len(response_text) > 100 else response_text,
-            "detailed_markdown": response_text,
-            "metadata": {
-                "entities": [],
-                "columns": [],
-                "lineage": {},
-                "quality_tests": []
-            }
-        }
+            if kind == "on_chat_model_stream":
+                chunk = event["data"]["chunk"]
+                if chunk.content:
+                    text = ""
+                    if isinstance(chunk.content, str):
+                        text = chunk.content
+                    elif isinstance(chunk.content, list):
+                        for block in chunk.content:
+                            if isinstance(block, dict) and block.get("type") == "text":
+                                text += block.get("text", "")
+                            elif isinstance(block, str):
+                                text += block
+                    if text:
+                        yield f"data: {json.dumps({'type': 'token', 'content': text}, ensure_ascii=False)}\n\n"
+                        
+            elif kind == "on_tool_start":
+                if name == "task":
+                    subagent = event["data"].get("input", {}).get("subagent_type", "especialista")
+                    desc = event["data"].get("input", {}).get("description", "")
+                    yield f"data: {json.dumps({'type': 'step', 'content': f'Acionando especialista: {subagent} ({desc})'}, ensure_ascii=False)}\n\n"
+                elif name == "responder_usuario":
+                    yield f"data: {json.dumps({'type': 'step', 'content': 'Formatando resposta final...'}, ensure_ascii=False)}\n\n"
+                    
+            elif kind == "on_tool_end":
+                if name == "responder_usuario":
+                    output = event["data"].get("output")
+                    if output:
+                        val = output
+                        if hasattr(val, "content"):
+                            val = val.content
+                        if isinstance(val, str):
+                            try:
+                                parsed = json.loads(val)
+                                yield f"data: {json.dumps({'type': 'final', 'data': parsed}, ensure_ascii=False)}\n\n"
+                            except Exception as e:
+                                print(f"Error parsing final JSON: {e}")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        yield f"data: {json.dumps({'type': 'error', 'content': str(e)}, ensure_ascii=False)}\n\n"
+
+@app.post("/api/chat", dependencies=[Depends(verify_api_key)])
+async def chat(request: ChatRequest):
+    return StreamingResponse(stream_generator(request.message), media_type="text/event-stream")
 
 @app.get("/health")
 async def health():

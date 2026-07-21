@@ -9,6 +9,8 @@ Padrão Supervisor + Especialistas, agora nativo no `deepagents`:
 from typing import List
 import json
 from langchain_core.tools import tool
+from langchain_core.language_models.chat_models import BaseChatModel
+from langchain.chat_models import init_chat_model
 
 from deepagents import create_deep_agent
 
@@ -116,6 +118,60 @@ aplicáveis (nível TABLE ou COLUMN). Reporte os testes relevantes e seus parâm
 Responda em português, de forma objetiva."""
 
 
+def _build_patched_model() -> BaseChatModel:
+    model_spec = config.model_id()
+    if not isinstance(model_spec, str):
+        return model_spec
+
+    model = init_chat_model(model_spec)
+
+    # Patch original methods to avoid LangChain thinking block missing field validation crash
+    orig_ainvoke = model.ainvoke
+    orig_astream = model.astream
+    orig_agenerate = model.agenerate
+
+    def _clean_message(msg):
+        if hasattr(msg, "content"):
+            content = msg.content
+            if isinstance(content, list):
+                new_content = []
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "thinking":
+                        if not block.get("thinking"):
+                            block["thinking"] = " "
+                    elif hasattr(block, "type") and getattr(block, "type") == "thinking":
+                        if not getattr(block, "thinking", None):
+                            try:
+                                block.thinking = " "
+                            except Exception:
+                                pass
+                    new_content.append(block)
+                msg.content = new_content
+        return msg
+
+    def _clean_input(input_data):
+        if isinstance(input_data, list):
+            return [_clean_message(m) for m in input_data]
+        elif isinstance(input_data, dict) and "messages" in input_data:
+            input_data["messages"] = [_clean_message(m) for m in input_data["messages"]]
+        return input_data
+
+    async def safe_ainvoke(input, *args, **kwargs):
+        return await orig_ainvoke(_clean_input(input), *args, **kwargs)
+
+    async def safe_astream(input, *args, **kwargs):
+        return await orig_astream(_clean_input(input), *args, **kwargs)
+
+    async def safe_agenerate(messages, *args, **kwargs):
+        cleaned_messages = [[_clean_message(m) for m in msg_list] for msg_list in messages]
+        return await orig_agenerate(cleaned_messages, *args, **kwargs)
+
+    object.__setattr__(model, "ainvoke", safe_ainvoke)
+    object.__setattr__(model, "astream", safe_astream)
+    object.__setattr__(model, "agenerate", safe_agenerate)
+    return model
+
+
 def build_agent(readonly_tools: List):
     """Constrói o deep agent supervisor com os 4 sub-agentes especialistas.
 
@@ -161,9 +217,11 @@ def build_agent(readonly_tools: List):
         },
     ]
 
+    model_instance = _build_patched_model()
+
     # O supervisor recebe a ferramenta responder_usuario para encapsular o output
     agent = create_deep_agent(
-        model=config.model_id(),
+        model=model_instance,
         tools=[responder_usuario],
         system_prompt=SUPERVISOR_PROMPT,
         subagents=subagents,
