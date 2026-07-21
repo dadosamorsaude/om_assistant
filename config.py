@@ -27,6 +27,9 @@ OPENMETADATA_AUTH_PROVIDER = os.getenv("OPENMETADATA_AUTH_PROVIDER", "openmetada
 # --- Security / API Authentication ---
 API_KEY = os.getenv("API_KEY")
 
+# --- Persistent DB Connection (PostgreSQL) ---
+DATABASE_URL = os.getenv("DATABASE_URL")
+
 
 def model_id() -> str:
     """String de modelo no formato provider:model exigido pelo LangChain/deepagents."""

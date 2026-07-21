@@ -20,6 +20,8 @@ import config
 from om_client import build_mcp_client, load_readonly_tools
 from deep_agent import build_agent
 from main import _final_text
+from langchain_core.messages import HumanMessage
+from memory import get_session_history
 
 # --- Autenticação via API Key ---
 API_KEY_NAME = "X-API-Key"
@@ -54,6 +56,12 @@ async def lifespan(app: FastAPI):
         print(f"❌ Erro crítico ao inicializar agente: {e}")
     yield
     print("🤖 Encerrando servidor da API...")
+    try:
+        from memory import close_pool
+        await close_pool()
+        print("🤖 Pool de conexões do PostgreSQL encerrado com sucesso.")
+    except Exception as e:
+        print(f"⚠️ Erro ao fechar pool de conexões do PostgreSQL: {e}")
 
 app = FastAPI(
     title="API de Metadados e Linhagem — Cartão de TODOS",
@@ -71,15 +79,35 @@ app.add_middleware(
 
 class ChatRequest(BaseModel):
     message: str
+    session_id: str | None = None
+    user_id: str | None = None
 
-async def stream_generator(message: str):
+async def stream_generator(message: str, session_id: str):
     global agent_executor
     if not agent_executor:
         yield f"data: {json.dumps({'type': 'error', 'content': 'Agente não inicializado no servidor.'}, ensure_ascii=False)}\n\n"
         return
         
     try:
-        async for event in agent_executor.astream_events({"messages": [{"role": "user", "content": message}]}, version="v2"):
+        # Recupera histórico persistido do PostgreSQL ou in-memory
+        history = get_session_history(session_id)
+        
+        # Limita o histórico de contexto às últimas 10 mensagens
+        recent_messages = list(history.messages)[-10:]
+        
+        # Remove atributos 'name' das mensagens do histórico para compatibilidade
+        for m in recent_messages:
+            if hasattr(m, 'name'):
+                m.name = None
+            m.additional_kwargs.pop('name', None)
+            
+        input_messages = recent_messages + [HumanMessage(content=message)]
+        
+        # Salva a mensagem do usuário no histórico persistido
+        history.add_user_message(message)
+        
+        final_text = ""
+        async for event in agent_executor.astream_events({"messages": input_messages}, version="v2"):
             kind = event.get("event")
             name = event.get("name")
             
@@ -116,15 +144,22 @@ async def stream_generator(message: str):
                         if isinstance(val, str):
                             try:
                                 parsed = json.loads(val)
+                                final_text = parsed.get("detailed_markdown", "")
                                 yield f"data: {json.dumps({'type': 'final', 'data': parsed}, ensure_ascii=False)}\n\n"
                             except Exception as e:
                                 print(f"Error parsing final JSON: {e}")
+                                
+        # Salva a resposta final do assistente no histórico persistido
+        if final_text:
+            history.add_ai_message(final_text)
+            
     except Exception as e:
         yield f"data: {json.dumps({'type': 'error', 'content': str(e)}, ensure_ascii=False)}\n\n"
 
 @app.post("/api/chat", dependencies=[Depends(verify_api_key)])
 async def chat(request: ChatRequest):
-    return StreamingResponse(stream_generator(request.message), media_type="text/event-stream")
+    sess_id = request.session_id or request.user_id or "default_session"
+    return StreamingResponse(stream_generator(request.message, sess_id), media_type="text/event-stream")
 
 @app.get("/health")
 async def health():
