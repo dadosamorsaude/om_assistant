@@ -1,0 +1,26 @@
+# Configurações de ambiente / Credenciais
+.env
+
+# Ambientes virtuais Python
+venv/
+.venv/
+env/
+ENV/
+
+# Python cache / compilação
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Configurações de IDEs (VS Code, PyCharm, etc.)
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+
+# Arquivos do sistema operacional
+.DS_Store
+Thumbs.db

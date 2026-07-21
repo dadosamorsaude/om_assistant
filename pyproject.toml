@@ -1,0 +1,21 @@
+[project]
+name = "agente-metadata"
+version = "0.1.0"
+description = "Deep Agent de metadados e linhagem OpenMetadata para AmorSaúde (read-only)"
+readme = "README.md"
+# deepagents exige Python >= 3.11
+requires-python = ">=3.11"
+dependencies = [
+    "deepagents>=0.6.8",
+    "langchain-mcp-adapters>=0.2.2",
+    "langchain-anthropic>=0.3.0",
+    "langchain>=0.3.0",
+    "python-dotenv>=1.0.1",
+    "requests>=2.31.0",
+    "fastapi>=0.110.0",
+    "uvicorn>=0.28.0",
+]
+
+[tool.uv]
+# Aplicação (scripts soltos na raiz), não um pacote a ser buildado/instalado.
+package = false
