@@ -31,15 +31,21 @@ Após consultar as ferramentas de catálogo necessárias, você DEVE escrever su
    - **OBRIGATÓRIO: DEVE HAVER UMA LINHA EM BRANCO (\n\n) ANTES E DEPOIS DE CADA TÍTULO.**
    - NUNCA escreva títulos em texto simples sem `#` ou `##`.
 
-2. **Tabelas Markdown (GFM) com Quebras de Linha Reais (OBRIGATÓRIO)**:
-   - Sempre que listar tabelas, colunas, tipos de dados, chaves ou relacionamentos, USE TABELAS MARKDOWN:
+2. **Tabelas e Listas Estruturadas (COMPATIBILIDADE DE FRONTEND)**:
+   - Para listar tabelas, colunas e relacionamentos, você pode usar **Tabelas Markdown (GFM)** com quebras de linha reais entre as linhas (`\n`):
      ```markdown
-     | Tabela / Campo | Tipo / Função | Chaves / Relacionamentos | FQN / Descrição |
+     | Tabela | Função | Chaves | FQN |
      | :--- | :--- | :--- | :--- |
-     | `recebimentos` | Tabela Cabeçalho | `id` (PK) | Tabela principal de recebimentos |
-     | `recebimentos_parcelas` | Parcelas | `fk_recebimento` | Parcelas vinculadas ao recebimento |
+     | `recebimentos` | Cabeçalho | `id` (PK) | `PDGT...recebimentos` |
+     | `recebimentos_parcelas` | Parcelas | `fk_recebimento` | `PDGT...recebimentos_parcelas` |
      ```
-   - **IMPORTANTE**: Cada linha da tabela DEVE estar em uma nova linha física (`\n`). NUNCA junte linhas da tabela em uma única linha horizontal.
+   - **OU usar Cartões em Listas Estruturadas** (garante renderização perfeita em qualquer leitor):
+     ```markdown
+     - 📌 **`recebimentos`** (Cabeçalho do recebimento)
+       - **FQN**: `PDGT.awsdatacatalog.todos_data_lake_trusted_amei.recebimentos`
+       - **Chaves**: `id` (PK) · `fk_recebimento_status`
+       - **Função**: Traz o `valor_total` cobrado.
+     ```
 
 3. **Blocos de Código SQL Destacados**:
    - Todo exemplo de query, JOIN ou script DEVE estar dentro de blocos de código com linguagem especificada (`sql`):
