@@ -119,34 +119,21 @@ async def main_async():
             
             if kind == "on_chat_model_stream":
                 chunk = event["data"]["chunk"]
-                tcs = getattr(chunk, 'tool_call_chunks', None)
-                
-                if tcs:
-                    for tc in tcs:
-                        tc_name = tc.get("name")
-                        if tc_name == "responder_usuario":
-                            is_responding = True
-                        elif tc_name and tc_name != "responder_usuario":
-                            is_responding = False
-                            
-                if is_responding and tcs:
-                    for tc in tcs:
-                        args = tc.get("args") or ""
-                        if args:
-                            accumulated_responder_json += args
-                            current_markdown = extract_markdown_from_partial_json(accumulated_responder_json)
-                            if current_markdown and len(current_markdown) > len(last_streamed_markdown):
-                                new_tokens = current_markdown[len(last_streamed_markdown):]
-                                last_streamed_markdown = current_markdown
-                                print(new_tokens, end="", flush=True)
+                if hasattr(chunk, "content") and chunk.content:
+                    text = ""
+                    if isinstance(chunk.content, str):
+                        text = chunk.content
+                    elif isinstance(chunk.content, list):
+                        for block in chunk.content:
+                            if isinstance(block, dict) and block.get("type") == "text":
+                                text += block.get("text", "")
+                            elif isinstance(block, str):
+                                text += block
+                    if text:
+                        print(text, end="", flush=True)
                         
             elif kind == "on_tool_start":
-                if name == "responder_usuario":
-                    is_responding = True
-                    print("\n\n🤖 [Orquestrador] Formatando resposta final...\n", flush=True)
-                else:
-                    is_responding = False
-                    print(f"\n🤖 [Orquestrador] Acionando ferramenta ({name})...", flush=True)
+                print(f"\n🤖 [Orquestrador] Consultando catálogo ({name})...\n", flush=True)
                     
             elif kind == "on_chain_end" and name in ("orquestrador", "supervisor", "LangGraph"):
                 output = event["data"].get("output")

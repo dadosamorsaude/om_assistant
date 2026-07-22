@@ -184,51 +184,9 @@ async def stream_generator(message: str, session_id: str):
                     if text:
                         final_text += text
                         yield f"data: {json.dumps({'type': 'token', 'content': text}, ensure_ascii=False)}\n\n"
-
-                # Suporte incremental caso venha via tool call 'responder_usuario'
-                tcs = getattr(chunk, 'tool_call_chunks', None)
-                if tcs:
-                    for tc in tcs:
-                        tc_name = tc.get("name")
-                        if tc_name == "responder_usuario":
-                            is_responding = True
-                        elif tc_name and tc_name != "responder_usuario":
-                            is_responding = False
-                            
-                if is_responding and tcs:
-                    for tc in tcs:
-                        args = tc.get("args") or ""
-                        if args:
-                            accumulated_responder_json += args
-                            current_markdown = extract_markdown_from_partial_json(accumulated_responder_json)
-                            if current_markdown and len(current_markdown) > len(last_streamed_markdown):
-                                new_tokens = current_markdown[len(last_streamed_markdown):]
-                                last_streamed_markdown = current_markdown
-                                final_text = current_markdown
-                                yield f"data: {json.dumps({'type': 'token', 'content': new_tokens}, ensure_ascii=False)}\n\n"
                         
             elif kind == "on_tool_start":
-                if name == "responder_usuario":
-                    is_responding = True
-                    yield f"data: {json.dumps({'type': 'step', 'content': 'Formatando resposta final...'}, ensure_ascii=False)}\n\n"
-                else:
-                    is_responding = False
-                    yield f"data: {json.dumps({'type': 'step', 'content': f'Consultando catálogo ({name})...'}, ensure_ascii=False)}\n\n"
-                    
-            elif kind == "on_tool_end":
-                if name == "responder_usuario":
-                    output = event["data"].get("output")
-                    if output:
-                        val = output
-                        if hasattr(val, "content"):
-                            val = val.content
-                        if isinstance(val, str):
-                            try:
-                                parsed = json.loads(val)
-                                final_text = parsed.get("detailed_markdown", "")
-                                yield f"data: {json.dumps({'type': 'final', 'data': parsed}, ensure_ascii=False)}\n\n"
-                            except Exception as e:
-                                print(f"Error parsing final JSON: {e}")
+                yield f"data: {json.dumps({'type': 'step', 'content': f'Consultando catálogo ({name})...'}, ensure_ascii=False)}\n\n"
                                 
         # Salva a resposta final do assistente no histórico persistido
         if final_text:

@@ -16,80 +16,46 @@ from deepagents import create_deep_agent
 import config
 
 
-@tool
-def responder_usuario(
-    intencao: str,
-    resumo: str,
-    resposta_markdown: str,
-    ativos_citados: list[dict] = [],
-    colunas: list[dict] = [],
-    linhagem: dict = {},
-    testes_qualidade: list[dict] = []
-) -> str:
-    """Ferramenta obrigatória que o AGENTE DEVE chamar para entregar a resposta final ao usuário.
-    Toda e qualquer resposta final enviada deve usar esta ferramenta.
-    
-    Parâmetros:
-    - intencao: A intenção identificada ('discover', 'inspect_schema', 'inspect_lineage', 'quality_check' ou 'general').
-    - resumo: Resumo rápido da resposta para o usuário final, em texto plano.
-    - resposta_markdown: Texto explicativo completo em markdown.
-    - ativos_citados: Lista de dicionários para tabelas/ativos encontrados. Cada dicionário DEVE ter as chaves: 'fqn' (Fully Qualified Name exato), 'nome' (nome da tabela), 'tipo' (geralmente 'table'), 'descricao' (descrição da tabela) e 'owner' (dono da tabela).
-    - colunas: Lista de colunas de uma tabela (se a intenção for inspect_schema). Cada dicionário DEVE ter as chaves: 'nome' (nome do campo), 'tipo' (tipo de dados) e 'descricao' (descrição).
-    - linhagem: Dicionário de linhagem com chaves 'upstream' (lista de FQNs pais) e 'downstream' (lista de FQNs filhos/dashboards que a consomem).
-    - testes_qualidade: Lista de testes de qualidade da tabela. Cada dicionário DEVE ter as chaves: 'teste_nome' (nome do teste), 'coluna' (coluna testada) e 'status' (sucesso/falha/etc.).
-    """
-    return json.dumps({
-        "intent": intencao,
-        "summary": resumo,
-        "detailed_markdown": resposta_markdown,
-        "metadata": {
-            "entities": ativos_citados,
-            "columns": colunas,
-            "lineage": linhagem,
-            "quality_tests": testes_qualidade
-        }
-    }, ensure_ascii=False)
-
-
 ORCHESTRATOR_PROMPT = """Você é o AGENTE ORQUESTRADOR do sistema de metadados do ecossistema Cartão de TODOS, \
 conectado ao catálogo OpenMetadata (somente leitura).
 
-### 🎨 REGRAS OBRIGATÓRIAS DE RESPOSTA E FORMATAÇÃO (MARKDOWN RICO & EXECUTIVO):
-Após consultar as ferramentas necessárias, você DEVE gerar uma resposta final ricamente formatada em **Markdown GFM**.
+### 🎨 REGRAS OBRIGATÓRIAS DE RESPOSTA (MARKDOWN RICO & EXECUTIVO GFM):
+Após consultar as ferramentas de catálogo necessárias, você DEVE escrever sua resposta final DIRETAMENTE em texto **Markdown GFM**.
 
-Para garantir que a resposta fique bonita, limpa e legível na tela do usuário, siga RIGOROSAMENTE as regras abaixo:
+⚠️ Para garantir que a resposta fique impecável, limpa e legível na tela do usuário (gerando tabelas HTML reais e código colorido), siga RIGOROSAMENTE as regras abaixo:
 
-1. **Estrutura e Títulos (Sempre com # e ##)**:
-   - Toda resposta DEVE ter títulos claros com Emojis.
+1. **Estrutura e Títulos (Sempre com # e ## com linha em branco)**:
+   - Toda resposta DEVE ter títulos com Emojis.
    - Use `## 📊 Nome da Seção` para seções principais.
-   - Use `### 🔹 Nome da Subseção` para tópicos específicos.
-   - **DEVE HAVER UMA LINHA EM BRANCO ANTES E DEPOIS DE CADA TÍTULO.**
+   - Use `### 🔹 Nome da Subseção` para desdobramentos.
+   - **OBRIGATÓRIO: DEVE HAVER UMA LINHA EM BRANCO (\n\n) ANTES E DEPOIS DE CADA TÍTULO.**
    - NUNCA escreva títulos em texto simples sem `#` ou `##`.
 
-2. **Tabelas Markdown para Listas de Ativos, Colunas e Schemas (OBRIGATÓRIO)**:
-   - Sempre que listar tabelas, colunas, tipos de dados, chaves ou status, NUNCA use listas longas em texto plano. USE TABELAS MARKDOWN:
+2. **Tabelas Markdown (GFM) com Quebras de Linha Reais (OBRIGATÓRIO)**:
+   - Sempre que listar tabelas, colunas, tipos de dados, chaves ou relacionamentos, USE TABELAS MARKDOWN:
+     ```markdown
      | Tabela / Campo | Tipo / Função | Chaves / Relacionamentos | FQN / Descrição |
      | :--- | :--- | :--- | :--- |
      | `recebimentos` | Tabela Cabeçalho | `id` (PK) | Tabela principal de recebimentos |
+     | `recebimentos_parcelas` | Parcelas | `fk_recebimento` | Parcelas vinculadas ao recebimento |
+     ```
+   - **IMPORTANTE**: Cada linha da tabela DEVE estar em uma nova linha física (`\n`). NUNCA junte linhas da tabela em uma única linha horizontal.
 
 3. **Blocos de Código SQL Destacados**:
-   - Todo exemplo de query, JOIN ou código DEVE estar dentro de blocos de código com linguagem especificada:
+   - Todo exemplo de query, JOIN ou script DEVE estar dentro de blocos de código com linguagem especificada (`sql`):
      ```sql
      SELECT 
-         r.id, 
-         r.valor_total, 
+         r.id AS id_recebimento,
+         r.valor_total,
          s.status
      FROM recebimentos r
      JOIN recebimento_status s ON r.fk_recebimento_status = s.id;
      ```
 
 4. **Espaçamento e Parágrafos**:
-   - **SEMPRE use DUAS quebras de linha (`\n\n`) entre parágrafos** para evitar que o leitor de Markdown alinhave todo o texto em um único bloco rígido.
+   - **SEMPRE use DUAS quebras de linha (`\n\n`) entre parágrafos** para evitar que o leitor de Markdown alinhave o texto em um bloco rígido.
    - Destaque termos-chave em **negrito** e nomes de tabelas/colunas em `código inline`.
    - Use blocos de citação (`> 💡 **Dica:**`) para ressaltar observações importantes de modelagem.
-
-5. **Ferramenta `responder_usuario` (Opcional se responder direto)**:
-   - Você pode enviar a resposta final diretamente em texto livre Markdown RICO ou através da ferramenta `responder_usuario`. Se usar a ferramenta, preencha o campo `resposta_markdown` seguindo EXATAMENTE essas regras de formatação.
 
 ### Suas Ferramentas de Consulta ao Catálogo:
 1. `search_metadata`: Busca por palavras-chave (tabelas, dashboards, pipelines, schemas).
@@ -102,7 +68,7 @@ Para garantir que a resposta fique bonita, limpa e legível na tela do usuário,
 ### Fluxo Autónomo de Execução:
 1. **Obter FQN Exato**: Se o usuário fornecer apenas o nome simples de uma tabela (ex.: "recebimentos"), use `search_metadata` primeiro para obter o FQN exato (`PDGT.awsdatacatalog.todos_data_lake_trusted_amei.recebimentos`).
 2. **Inspecionar / Mapear**: Com o FQN exato, consulte os detalhes técnicos (`get_entity_details`) ou linhagem (`get_entity_lineage`).
-3. **Gerar Parecer Formatado**: Apresente o resultado final usando tabelas Markdown, títulos com emojis `##`, blocos de código ````sql```` e espaçamento correto.
+3. **Gerar Parecer Formatado**: Escreva o texto final diretamente em Markdown RICO (GFM) formatado com tabelas, títulos com emojis `##` e blocos de código ````sql````.
 
 ### Regras de Ouro:
 - Estritamente LEITURA. Nunca peça criação/edição/remoção de nada.
@@ -166,17 +132,16 @@ def _build_patched_model() -> BaseChatModel:
 
 
 def build_agent(readonly_tools: List):
-    """Constrói o agente orquestrador único com todas as ferramentas read-only e responder_usuario.
+    """Constrói o agente orquestrador único com todas as ferramentas read-only.
 
     `readonly_tools` deve ser a lista de ferramentas LangChain já filtradas
     (retorno de om_client.load_readonly_tools).
     """
-    all_tools = list(readonly_tools) + [responder_usuario]
     model_instance = _build_patched_model()
 
     agent = create_deep_agent(
         model=model_instance,
-        tools=all_tools,
+        tools=list(readonly_tools),
         system_prompt=ORCHESTRATOR_PROMPT,
         name="orquestrador",
     )
