@@ -6,7 +6,7 @@ readme = "README.md"
 # deepagents exige Python >= 3.11
 requires-python = ">=3.11"
 dependencies = [
-    "deepagents>=0.6.8",
+    "langgraph>=0.2.0",
     "langchain-mcp-adapters>=0.2.2",
     "langchain-anthropic>=0.3.0",
     "langchain>=0.3.0",

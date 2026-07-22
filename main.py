@@ -2,8 +2,10 @@ import argparse
 import asyncio
 import sys
 
-import config
-from om_client import build_mcp_client, load_readonly_tools
+from app.core import config
+from app.services import build_mcp_client, load_readonly_tools
+from app.agent import build_agent
+from app.api.server import extract_markdown_from_partial_json
 
 # Suporte a UTF-8 no console Windows
 try:
@@ -13,11 +15,8 @@ except Exception:
     pass
 
 
-
 def _final_text(result) -> str:
-    """Extrai o texto da última mensagem do agente, com suporte a tool calls estruturados."""
-    # Procura se o supervisor chamou a ferramenta responder_usuario (de trás para frente)
-    # Paramos a busca ao encontrar a mensagem do usuário (limite do turno atual)
+    """Extrai o texto da última mensagem do agente."""
     for msg in reversed(result["messages"]):
         is_user = False
         if isinstance(msg, dict):
@@ -56,10 +55,7 @@ async def _connect():
 
 
 async def check_connection() -> int:
-    """Testa a conexão com o MCP: valida token, confirma /mcp e lista ferramentas.
-
-    Não depende do deepagents — serve para validar o setup isoladamente.
-    """
+    """Testa a conexão com o MCP: valida token, confirma /mcp e lista ferramentas."""
     config.print_config()
     print("\n[CHECK] Conectando ao servidor MCP e listando ferramentas...\n")
     try:
@@ -83,7 +79,7 @@ async def check_connection() -> int:
 
 async def main_async():
     parser = argparse.ArgumentParser(
-        description="Deep Agent de metadados OpenMetadata para Cartão de TODOS (read-only)."
+        description="Agente de metadados OpenMetadata para Cartão de TODOS (read-only)."
     )
     parser.add_argument("--query", type=str, help="Executa uma consulta direta e encerra.")
     parser.add_argument("--check", action="store_true",
@@ -103,13 +99,10 @@ async def main_async():
         )
         return
 
-    from api import extract_markdown_from_partial_json
+    agent = build_agent(tools)
 
     async def answer(history):
         collected_messages = []
-        accumulated_responder_json = ""
-        last_streamed_markdown = ""
-        is_responding = False
 
         config_kwargs = {"recursion_limit": config.RECURSION_LIMIT}
 

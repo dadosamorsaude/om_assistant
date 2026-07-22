@@ -1,22 +1,17 @@
 """Conexão com o servidor MCP oficial do OpenMetadata.
 
-Substitui o antigo mcp_client.py (SSE/OAuth feito à mão) pelo
-`langchain-mcp-adapters`, que reusa a sessão e converte as ferramentas
-MCP em ferramentas LangChain automaticamente.
-
+Converte as ferramentas MCP em ferramentas LangChain automaticamente.
 Transporte: SSE em {OPENMETADATA_URL}/mcp
 Autenticação: JWT Bearer (Personal Access Token) — com fallback OAuth 2.0.
 """
 from typing import List, Tuple
-
 import requests
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
-import config
+from app.core import config
 
 # Allowlist explícito: SOMENTE ferramentas de leitura/análise do MCP oficial.
 # Qualquer create_*/patch_* fica de fora por construção (read-only garantido).
-# Nomes conforme a referência oficial do OpenMetadata MCP.
 READ_ONLY_TOOLS = {
     "search_metadata",      # Discover: busca por palavra-chave
     "semantic_search",      # Discover: busca vetorial em linguagem natural

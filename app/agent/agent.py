@@ -1,20 +1,15 @@
-"""Deep Agent (LangChain/deepagents) para metadados e linhagem Cartão de TODOS.
+"""Agent (LangGraph) para metadados e linhagem Cartão de TODOS.
 
-Arquitetura: Agente Orquestrador Único (ReAct)
+Arquitetura: Agente Orquestrador Único (ReAct no LangGraph)
 - Possui acesso direto a todas as ferramentas de consulta read-only do OpenMetadata.
 - Executa autonomamente o fluxo de busca de FQN -> inspeção de esquema / linhagem / qualidade.
 - Elimina bate-papo e divergências entre sub-agentes, garantindo alta velocidade e output limpo.
 """
 from typing import List
-import json
-from langchain_core.tools import tool
-from langchain_core.language_models.chat_models import BaseChatModel
 from langchain.chat_models import init_chat_model
+from langgraph.prebuilt import create_react_agent
 
-from deepagents import create_deep_agent
-
-import config
-
+from app.core import config
 
 ORCHESTRATOR_PROMPT = """Você é o AGENTE ORQUESTRADOR do sistema de metadados do ecossistema Cartão de TODOS, \
 conectado ao catálogo OpenMetadata (somente leitura).
@@ -75,73 +70,19 @@ Toda e qualquer resposta técnica sobre tabelas, esquemas, modelagem, cálculo o
 """
 
 
-def _build_patched_model() -> BaseChatModel:
-    model_spec = config.model_id()
-    if not isinstance(model_spec, str):
-        return model_spec
-
-    model = init_chat_model(model_spec)
-
-    # Patch original methods to avoid LangChain thinking block missing field validation crash
-    orig_ainvoke = model.ainvoke
-    orig_astream = model.astream
-    orig_agenerate = model.agenerate
-
-    def _clean_message(msg):
-        if hasattr(msg, "content"):
-            content = msg.content
-            if isinstance(content, list):
-                new_content = []
-                for block in content:
-                    if isinstance(block, dict) and block.get("type") == "thinking":
-                        if not block.get("thinking"):
-                            block["thinking"] = " "
-                    elif hasattr(block, "type") and getattr(block, "type") == "thinking":
-                        if not getattr(block, "thinking", None):
-                            try:
-                                block.thinking = " "
-                            except Exception:
-                                pass
-                    new_content.append(block)
-                msg.content = new_content
-        return msg
-
-    def _clean_input(input_data):
-        if isinstance(input_data, list):
-            return [_clean_message(m) for m in input_data]
-        elif isinstance(input_data, dict) and "messages" in input_data:
-            input_data["messages"] = [_clean_message(m) for m in input_data["messages"]]
-        return input_data
-
-    async def safe_ainvoke(input, *args, **kwargs):
-        return await orig_ainvoke(_clean_input(input), *args, **kwargs)
-
-    async def safe_astream(input, *args, **kwargs):
-        return await orig_astream(_clean_input(input), *args, **kwargs)
-
-    async def safe_agenerate(messages, *args, **kwargs):
-        cleaned_messages = [[_clean_message(m) for m in msg_list] for msg_list in messages]
-        return await orig_agenerate(cleaned_messages, *args, **kwargs)
-
-    object.__setattr__(model, "ainvoke", safe_ainvoke)
-    object.__setattr__(model, "astream", safe_astream)
-    object.__setattr__(model, "agenerate", safe_agenerate)
-    return model
-
-
 def build_agent(readonly_tools: List):
-    """Constrói o agente orquestrador único com todas as ferramentas read-only.
+    """Constrói o agente orquestrador único (LangGraph ReAct) com todas as ferramentas read-only.
 
     `readonly_tools` deve ser a lista de ferramentas LangChain já filtradas
     (retorno de om_client.load_readonly_tools).
     """
-    model_instance = _build_patched_model()
+    model_spec = config.model_id()
+    model_instance = init_chat_model(model_spec) if isinstance(model_spec, str) else model_spec
 
-    agent = create_deep_agent(
+    agent = create_react_agent(
         model=model_instance,
         tools=list(readonly_tools),
-        system_prompt=ORCHESTRATOR_PROMPT,
+        state_modifier=ORCHESTRATOR_PROMPT,
         name="orquestrador",
     )
     return agent
-

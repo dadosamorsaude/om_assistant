@@ -1,27 +1,22 @@
-# Cartão de TODOS — Deep Agent de Metadados e Linhagem
+# Cartão de TODOS — Agente de Metadados e Linhagem (LangGraph)
 
-Sistema **multi-agente** (Supervisor + Especialistas) construído com o framework
-**LangChain / [`deepagents`](https://docs.langchain.com/oss/python/deepagents/overview)**
+Sistema **Agente Orquestrador Único (ReAct)** construído com o framework
+**LangChain / [`LangGraph`](https://langchain-ai.github.io/langgraph/)**
 e conectado ao **servidor MCP oficial do OpenMetadata** para responder, em linguagem
 natural, sobre tabelas, esquemas, linhagem e qualidade de dados.
 
-O raciocínio e o tool-calling são feitos pela **API da Anthropic (Claude)**.
+O raciocínio e o tool-calling são feitos pelo modelo de linguagem configurado (ex.: Anthropic Claude / Gemini).
 
 ---
 
 ## 🎯 Arquitetura
 
-Padrão **Supervisor + Sub-agentes**, nativo do `deepagents` (que roda sobre LangGraph
-e traz planejamento, sub-agentes com contexto isolado, filesystem e streaming prontos):
+Padrão **Agente Orquestrador Único (ReAct no LangGraph)**:
+- **Orquestrador** — Possui acesso direto a todas as 6 ferramentas de consulta read-only do OpenMetadata.
+- Executa autonomamente o fluxo de busca de FQN -> inspeção de esquema / linhagem / qualidade.
+- Gera respostas no **Padrão Ouro** formatadas em Markdown rico com tabelas, consultas SQL e diagramas Mermaid.
 
-- **Supervisor** — planeja as etapas (todos) e **delega** via a ferramenta `task`. Não
-  acessa o catálogo diretamente; consolida as respostas dos especialistas.
-- **discover-agent** — `search_metadata`, `semantic_search` (localiza ativos e FQNs).
-- **inspector-agent** — `get_entity_details` (esquema, colunas, dono, tags).
-- **lineage-agent** — `get_entity_lineage`, `root_cause_analysis` (consumo/impacto).
-- **quality-agent** — `get_test_definitions` (testes de qualidade).
-
-Cada especialista recebe **apenas** as ferramentas da sua função.
+---
 
 ## 🛡️ Estritamente Read-Only
 
@@ -34,10 +29,18 @@ chegar ao agente — o modelo nunca as vê.
 ## 📁 Estrutura
 
 ```
-config.py       # variáveis de ambiente e helper de modelo
-om_client.py    # conexão MCP (SSE + JWT) e filtro read-only
-deep_agent.py   # supervisor + 4 sub-agentes (create_deep_agent)
-main.py         # CLI (consulta única ou loop interativo)
+app/
+├── core/
+│   └── config.py        # Configurações e variáveis de ambiente
+├── services/
+│   ├── om_client.py     # Conexão MCP (SSE + JWT) e filtro read-only
+│   └── memory.py        # Histórico de mensagens e sessão (PostgreSQL/InMemory)
+├── agent/
+│   └── agent.py         # Agente orquestrador único (langgraph.prebuilt.create_react_agent)
+└── api/
+    └── server.py        # Servidor FastAPI com streaming SSE e rotas da API
+api.py                   # Ponto de entrada do servidor (atalho para app.api.server)
+main.py                  # CLI (consulta única ou loop interativo)
 ```
 
 ## ⚙️ Configuração

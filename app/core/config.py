@@ -35,13 +35,13 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 
 
 def model_id() -> str:
-    """String de modelo no formato provider:model exigido pelo LangChain/deepagents."""
+    """String de modelo no formato provider:model exigido pelo LangChain/LangGraph."""
     return f"anthropic:{ANTHROPIC_MODEL}"
 
 
 def print_config():
     print("=" * 60)
-    print("   CONFIGURAÇÃO DO DEEP AGENT — METADADOS CARTÃO DE TODOS")
+    print("   CONFIGURAÇÃO DO AGENTE — METADADOS CARTÃO DE TODOS")
     print("=" * 60)
     print(f"Modelo (LangChain):      {model_id()}")
     print(f"Recursion Limit:         {RECURSION_LIMIT}")
@@ -50,4 +50,3 @@ def print_config():
     auth = "JWT/PAT direto" if OPENMETADATA_JWT_TOKEN else f"OAuth 2.0 ({OPENMETADATA_AUTH_PROVIDER})"
     print(f"Autenticação MCP:        {auth}")
     print("=" * 60)
-

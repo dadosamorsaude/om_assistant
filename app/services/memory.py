@@ -2,8 +2,8 @@ from langchain_core.chat_history import BaseChatMessageHistory, InMemoryChatMess
 from langchain_postgres import PostgresChatMessageHistory
 import psycopg
 import uuid
-import config
 import logging
+from app.core import config
 
 logger = logging.getLogger(__name__)
 
@@ -86,3 +86,8 @@ def clear_session_history(session_id: str) -> None:
 
     if session_id in _memory_store:
         del _memory_store[session_id]
+
+
+async def close_pool() -> None:
+    """Função utilitária de encerramento."""
+    pass
