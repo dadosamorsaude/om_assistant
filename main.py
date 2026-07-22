@@ -103,41 +103,52 @@ async def main_async():
         )
         return
 
-    # Importa o agente só agora (evita exigir deepagents no modo --check)
-    from deep_agent import build_agent
-
-    agent = build_agent(tools)
+    from api import extract_markdown_from_partial_json
 
     async def answer(history):
         collected_messages = []
-        async for event in agent.astream_events({"messages": history}, version="v2"):
+        accumulated_responder_json = ""
+        last_streamed_markdown = ""
+        is_responding = False
+
+        config_kwargs = {"recursion_limit": config.RECURSION_LIMIT}
+
+        async for event in agent.astream_events({"messages": history}, version="v2", config=config_kwargs):
             kind = event.get("event")
             name = event.get("name")
             
             if kind == "on_chat_model_stream":
                 chunk = event["data"]["chunk"]
-                if chunk.content:
-                    text = ""
-                    if isinstance(chunk.content, str):
-                        text = chunk.content
-                    elif isinstance(chunk.content, list):
-                        for block in chunk.content:
-                            if isinstance(block, dict) and block.get("type") == "text":
-                                text += block.get("text", "")
-                            elif isinstance(block, str):
-                                text += block
-                    if text:
-                        print(text, end="", flush=True)
+                tcs = getattr(chunk, 'tool_call_chunks', None)
+                
+                if tcs:
+                    for tc in tcs:
+                        tc_name = tc.get("name")
+                        if tc_name == "responder_usuario":
+                            is_responding = True
+                        elif tc_name and tc_name != "responder_usuario":
+                            is_responding = False
+                            
+                if is_responding and tcs:
+                    for tc in tcs:
+                        args = tc.get("args") or ""
+                        if args:
+                            accumulated_responder_json += args
+                            current_markdown = extract_markdown_from_partial_json(accumulated_responder_json)
+                            if current_markdown and len(current_markdown) > len(last_streamed_markdown):
+                                new_tokens = current_markdown[len(last_streamed_markdown):]
+                                last_streamed_markdown = current_markdown
+                                print(new_tokens, end="", flush=True)
                         
             elif kind == "on_tool_start":
-                if name == "task":
-                    subagent = event["data"].get("input", {}).get("subagent_type", "especialista")
-                    desc = event["data"].get("input", {}).get("description", "")
-                    print(f"\n\n🤖 [Sub-agente: {subagent}] {desc}...", flush=True)
-                elif name == "responder_usuario":
-                    print("\n\n🤖 [Supervisor] Formatando resposta final...\n", flush=True)
+                if name == "responder_usuario":
+                    is_responding = True
+                    print("\n\n🤖 [Orquestrador] Formatando resposta final...\n", flush=True)
+                else:
+                    is_responding = False
+                    print(f"\n🤖 [Orquestrador] Acionando ferramenta ({name})...", flush=True)
                     
-            elif kind == "on_chain_end" and name == "supervisor":
+            elif kind == "on_chain_end" and name in ("orquestrador", "supervisor", "LangGraph"):
                 output = event["data"].get("output")
                 if isinstance(output, dict) and "messages" in output:
                     collected_messages = output["messages"]

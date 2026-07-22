@@ -82,6 +82,56 @@ class ChatRequest(BaseModel):
     session_id: str | None = None
     user_id: str | None = None
 
+def extract_markdown_from_partial_json(json_str: str) -> str:
+    """Extrai incrementalmente o valor do campo 'resposta_markdown' a partir de uma string JSON parcial."""
+    idx = json_str.find('"resposta_markdown"')
+    if idx == -1:
+        idx = json_str.find("'resposta_markdown'")
+    if idx == -1:
+        return ""
+    
+    colon_idx = json_str.find(":", idx)
+    if colon_idx == -1:
+        return ""
+    
+    quote_idx = json_str.find('"', colon_idx)
+    if quote_idx == -1:
+        return ""
+    
+    start_pos = quote_idx + 1
+    res = []
+    i = start_pos
+    n = len(json_str)
+    while i < n:
+        c = json_str[i]
+        if c == '\\':
+            if i + 1 < n:
+                nxt = json_str[i+1]
+                if nxt == 'n':
+                    res.append('\n')
+                elif nxt == 't':
+                    res.append('\t')
+                elif nxt == 'r':
+                    res.append('\r')
+                elif nxt == '"':
+                    res.append('"')
+                elif nxt == '\\':
+                    res.append('\\')
+                else:
+                    res.append(nxt)
+                i += 2
+                continue
+            else:
+                break
+        elif c == '"':
+            break
+        else:
+            res.append(c)
+            i += 1
+            
+    return "".join(res)
+
+
 async def stream_generator(message: str, session_id: str):
     global agent_executor
     if not agent_executor:
@@ -107,32 +157,46 @@ async def stream_generator(message: str, session_id: str):
         history.add_user_message(message)
         
         final_text = ""
-        async for event in agent_executor.astream_events({"messages": input_messages}, version="v2"):
+        accumulated_responder_json = ""
+        last_streamed_markdown = ""
+        is_responding = False
+
+        config_kwargs = {"recursion_limit": config.RECURSION_LIMIT}
+
+        async for event in agent_executor.astream_events({"messages": input_messages}, version="v2", config=config_kwargs):
             kind = event.get("event")
             name = event.get("name")
             
             if kind == "on_chat_model_stream":
                 chunk = event["data"]["chunk"]
-                if chunk.content:
-                    text = ""
-                    if isinstance(chunk.content, str):
-                        text = chunk.content
-                    elif isinstance(chunk.content, list):
-                        for block in chunk.content:
-                            if isinstance(block, dict) and block.get("type") == "text":
-                                text += block.get("text", "")
-                            elif isinstance(block, str):
-                                text += block
-                    if text:
-                        yield f"data: {json.dumps({'type': 'token', 'content': text}, ensure_ascii=False)}\n\n"
+                tcs = getattr(chunk, 'tool_call_chunks', None)
+                
+                if tcs:
+                    for tc in tcs:
+                        tc_name = tc.get("name")
+                        if tc_name == "responder_usuario":
+                            is_responding = True
+                        elif tc_name and tc_name != "responder_usuario":
+                            is_responding = False
+                            
+                if is_responding and tcs:
+                    for tc in tcs:
+                        args = tc.get("args") or ""
+                        if args:
+                            accumulated_responder_json += args
+                            current_markdown = extract_markdown_from_partial_json(accumulated_responder_json)
+                            if current_markdown and len(current_markdown) > len(last_streamed_markdown):
+                                new_tokens = current_markdown[len(last_streamed_markdown):]
+                                last_streamed_markdown = current_markdown
+                                yield f"data: {json.dumps({'type': 'token', 'content': new_tokens}, ensure_ascii=False)}\n\n"
                         
             elif kind == "on_tool_start":
-                if name == "task":
-                    subagent = event["data"].get("input", {}).get("subagent_type", "especialista")
-                    desc = event["data"].get("input", {}).get("description", "")
-                    yield f"data: {json.dumps({'type': 'step', 'content': f'Acionando especialista: {subagent} ({desc})'}, ensure_ascii=False)}\n\n"
-                elif name == "responder_usuario":
+                if name == "responder_usuario":
+                    is_responding = True
                     yield f"data: {json.dumps({'type': 'step', 'content': 'Formatando resposta final...'}, ensure_ascii=False)}\n\n"
+                else:
+                    is_responding = False
+                    yield f"data: {json.dumps({'type': 'step', 'content': f'Consultando catálogo ({name})...'}, ensure_ascii=False)}\n\n"
                     
             elif kind == "on_tool_end":
                 if name == "responder_usuario":

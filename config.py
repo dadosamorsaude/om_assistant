@@ -24,6 +24,9 @@ OPENMETADATA_CLIENT_SECRET = os.getenv("OPENMETADATA_CLIENT_SECRET")
 OPENMETADATA_TOKEN_URL = os.getenv("OPENMETADATA_TOKEN_URL")
 OPENMETADATA_AUTH_PROVIDER = os.getenv("OPENMETADATA_AUTH_PROVIDER", "openmetadata")
 
+# --- Execution / Graph Settings ---
+RECURSION_LIMIT = int(os.getenv("RECURSION_LIMIT", "50"))
+
 # --- Security / API Authentication ---
 API_KEY = os.getenv("API_KEY")
 
@@ -41,8 +44,10 @@ def print_config():
     print("   CONFIGURAÇÃO DO DEEP AGENT — METADADOS CARTÃO DE TODOS")
     print("=" * 60)
     print(f"Modelo (LangChain):      {model_id()}")
+    print(f"Recursion Limit:         {RECURSION_LIMIT}")
     print(f"OpenMetadata URL:        {OPENMETADATA_URL}")
     print(f"OpenMetadata MCP (SSE):  {OPENMETADATA_MCP_ENDPOINT}")
     auth = "JWT/PAT direto" if OPENMETADATA_JWT_TOKEN else f"OAuth 2.0 ({OPENMETADATA_AUTH_PROVIDER})"
     print(f"Autenticação MCP:        {auth}")
     print("=" * 60)
+
