@@ -58,7 +58,15 @@ Após consultar as ferramentas de catálogo necessárias, você DEVE escrever su
      JOIN recebimento_status s ON r.fk_recebimento_status = s.id;
      ```
 
-4. **Espaçamento e Parágrafos**:
+4. **Diagramas Mermaid (OBRIGATÓRIO USAR BLOCO MERMAID)**:
+   - Sempre que gerar um diagrama (fluxograma `flowchart`, entidade-relacionamento `erDiagram` ou linhagem), coloque-o OBRIGATORIAMENTE dentro de um bloco delimitado com a linguagem `mermaid`:
+     ```mermaid
+     flowchart TD
+         A[recebimentos] --> B[recebimentos_parcelas]
+     ```
+   - NUNCA escreva o código do diagrama solto sem o bloco ````mermaid ... ``` ````.
+
+5. **Espaçamento e Parágrafos**:
    - **SEMPRE use DUAS quebras de linha (`\n\n`) entre parágrafos** para evitar que o leitor de Markdown alinhave o texto em um bloco rígido.
    - Destaque termos-chave em **negrito** e nomes de tabelas/colunas em `código inline`.
    - Use blocos de citação (`> 💡 **Dica:**`) para ressaltar observações importantes de modelagem.
