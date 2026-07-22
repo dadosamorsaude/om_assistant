@@ -41,18 +41,26 @@ async def verify_api_key(api_key: str = Security(api_key_header)):
 
 # Carregar agente globalmente para reuso entre chamadas
 agent_executor = None
+agent_initialization_error = None
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    global agent_executor
+async def _init_agent():
+    global agent_executor, agent_initialization_error
     try:
         print("🤖 Inicializando conexão com MCP e carregando agente...")
         client = build_mcp_client()
         tools, _ = await load_readonly_tools(client)
         agent_executor = build_agent(tools)
+        agent_initialization_error = None
         print("🤖 Agente carregado e pronto para receber requisições!")
+        return agent_executor
     except Exception as e:
+        agent_initialization_error = str(e)
         print(f"❌ Erro crítico ao inicializar agente: {e}")
+        return None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await _init_agent()
     yield
     print("🤖 Encerrando servidor da API...")
     try:
@@ -131,11 +139,15 @@ def extract_markdown_from_partial_json(json_str: str) -> str:
 
 
 async def stream_generator(message: str, session_id: str):
-    global agent_executor
+    global agent_executor, agent_initialization_error
     if not agent_executor:
-        yield f"data: {json.dumps({'type': 'error', 'content': 'Agente não inicializado no servidor.'}, ensure_ascii=False)}\n\n"
+        agent_executor = await _init_agent()
+
+    if not agent_executor:
+        err_msg = f"Agente não inicializado no servidor. Erro de inicialização: {agent_initialization_error or 'Conexão MCP ou credenciais pendentes.'}"
+        yield f"data: {json.dumps({'type': 'error', 'content': err_msg}, ensure_ascii=False)}\n\n"
         return
-        
+
     try:
         # Recupera histórico persistido do PostgreSQL ou in-memory
         history = get_session_history(session_id)
@@ -197,7 +209,11 @@ async def chat(request: ChatRequest):
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "agent_loaded": agent_executor is not None}
+    return {
+        "status": "healthy" if agent_executor is not None else "degraded",
+        "agent_loaded": agent_executor is not None,
+        "error": agent_initialization_error,
+    }
 
 if __name__ == "__main__":
     import uvicorn
