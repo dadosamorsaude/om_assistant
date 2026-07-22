@@ -169,8 +169,24 @@ async def stream_generator(message: str, session_id: str):
             
             if kind == "on_chat_model_stream":
                 chunk = event["data"]["chunk"]
-                tcs = getattr(chunk, 'tool_call_chunks', None)
                 
+                # Transmite tokens de conteúdo direto da LLM (Markdown limpo)
+                if hasattr(chunk, "content") and chunk.content:
+                    text = ""
+                    if isinstance(chunk.content, str):
+                        text = chunk.content
+                    elif isinstance(chunk.content, list):
+                        for block in chunk.content:
+                            if isinstance(block, dict) and block.get("type") == "text":
+                                text += block.get("text", "")
+                            elif isinstance(block, str):
+                                text += block
+                    if text:
+                        final_text += text
+                        yield f"data: {json.dumps({'type': 'token', 'content': text}, ensure_ascii=False)}\n\n"
+
+                # Suporte incremental caso venha via tool call 'responder_usuario'
+                tcs = getattr(chunk, 'tool_call_chunks', None)
                 if tcs:
                     for tc in tcs:
                         tc_name = tc.get("name")
@@ -188,6 +204,7 @@ async def stream_generator(message: str, session_id: str):
                             if current_markdown and len(current_markdown) > len(last_streamed_markdown):
                                 new_tokens = current_markdown[len(last_streamed_markdown):]
                                 last_streamed_markdown = current_markdown
+                                final_text = current_markdown
                                 yield f"data: {json.dumps({'type': 'token', 'content': new_tokens}, ensure_ascii=False)}\n\n"
                         
             elif kind == "on_tool_start":
