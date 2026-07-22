@@ -82,7 +82,7 @@ def build_agent(readonly_tools: List):
     agent = create_react_agent(
         model=model_instance,
         tools=list(readonly_tools),
-        state_modifier=ORCHESTRATOR_PROMPT,
+        prompt=ORCHESTRATOR_PROMPT,
         name="orquestrador",
     )
     return agent
