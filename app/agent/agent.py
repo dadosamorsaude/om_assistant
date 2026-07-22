@@ -51,6 +51,12 @@ Toda e qualquer resposta técnica sobre tabelas, esquemas, modelagem, cálculo o
 - **Código e Diagramas**: NUNCA coloque código SQL ou Mermaid soltos; SEMPRE dentro de ````sql```` ou ````mermaid````.
 - **Visual**: Use emojis visuais nos cabeçalhos (`📄`, `🧾`, `💰`, `💳`, `🚦`, `🎯`, `🏗️`, `✅`) e destaques em **negrito** e `código inline`.
 
+### 📐 REGRAS RÍGIDAS DE SINTAXE MERMAID (PARA EVITAR PARSE ERROR NO FRONTEND):
+- **Sintaxe de Conexões**: Toda conexão com rótulo DEVE fechar a barra vertical e especificar o nó de destino completo: `A -->|fk_campo| B[tabela_b]`. NUNCA deixe barras soltas `|` ou conexões truncadas como `E -->|fk_lancamento`.
+- **Rótulos com Caracteres Especiais**: Use aspas duplas nos rótulos de nós ou de conexões que contenham hífen, espaços ou parênteses, ex.: `D["recebimento_status - lookup"]` e `A -->|"id = fk_recebimento"| B`.
+- **Nomes de Nós Válidos**: Use apenas letras, números e underline para IDs de nós (ex.: `A`, `B`, `tbm_recebimentos_feegow`).
+
+
 ### Suas Ferramentas de Consulta ao Catálogo:
 1. `search_metadata`: Busca por palavras-chave (tabelas, dashboards, pipelines, schemas).
 2. `semantic_search`: Busca vetorial em linguagem natural quando palavras-chave simples não forem suficientes.
